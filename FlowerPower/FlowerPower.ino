@@ -67,17 +67,23 @@ class Display {
       display.setCursor(0,0);
       display.println(F("Watering the plant"));
     }
-    
-    void loop() {
+
+    void screenBME() {
       display.setTextSize(1);
       display.setTextColor(WHITE);
       display.setCursor(0,0);
-      display.println(F(sensors.temperature() + " *C"));
+      display.clearDisplay();
+      display.println(sensors.temperature() + " *C");
       display.setCursor(0, 5);
-      display.println(F(sensors.pressure() + " hPa"));
+      display.println(sensors.pressure() + " hPa");
       display.setCursor(0, 10);
-      display.println(F(sensors.humidity() + " %"));
+      display.println(sensors.humidity() + " %");
       display.display();
+    }
+    
+    void loop() {
+      screenBME();
+
     }
 
 };
@@ -85,11 +91,11 @@ class Display {
 class Machine {
   private:
     Servo waterServo;
-    Display waterDisplay;
+    Display Screen;
   public:
     void waterPlant() {
       int pos;
-      waterDisplay.initiateWater();
+      Screen.initiateWater();
       
 
       // Command servo
@@ -99,26 +105,32 @@ class Machine {
       // Machine state. 1 means automatic state, waters plant based on sensors. 0 means manual state, waters plant when command is given.
       int machineState = 1;
       waterServo.attach(D2);
-
     }
 };
 
 Machine Machine;
 Sensors Sensors;
+Display Screen;
 
 void setup() {
   // put your setup code here, to run once:
-  //startupTime = millis();
+  startupTime = millis();
   pinMode(A0, INPUT);
   Wire.begin(D4, D6);
   bme.begin();
+
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3D (for the 128x64)
+  display.display();
+  display.clearDisplay();
   
   Serial.begin(9600);
+
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
   digitalWrite(D7, LOW); 
+  Screen.screenBME();
 }
 
 
@@ -129,4 +141,3 @@ void loop() {
 // int brightness() {
 //   return analogRead(lightPin);
 // }
-
