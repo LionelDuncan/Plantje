@@ -1,7 +1,7 @@
 /* Code for Assignment 2 of Interaction Technology
  * Made by:
  * Takis Hoogterp - 5931967
- * Lionel - ???????
+ * Lionel - 5941016
  */
 
 #include <Wire.h>
@@ -44,7 +44,7 @@ class Sensors {
     // returns PRESSURE in hPa
     int pressure() {
       return bme.readPressure() / 100.0F;
-      }
+    }
     
     // returns HUMIDITY in bar
     int humidity() {
@@ -95,8 +95,7 @@ class Machine {
   public:
     void waterPlant() {
       int pos;
-      Screen.initiateWater();
-      
+      waterDisplay.initiateWater();
 
       // Command servo
       
