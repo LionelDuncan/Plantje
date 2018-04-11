@@ -1,19 +1,15 @@
 #include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
-#include <Button.h>        //https://github.com/JChristensen/Button
+#include <Adafruit_SSD1306.h> //displaylibraries
+#include <Button.h>        //https://github.com/JChristensen/Button -> thanks!
 
-#include <ESP8266WiFi.h>
-//#include <ESP8266mDNS.h>
-//#include <WiFiUdp.h>
-//#include <ArduinoOTA.h>
-
-#include <PubSubClient.h>
-#include <Wire.h>
+#include <ESP8266WiFi.h> //wifi
+#include <PubSubClient.h> // mqtt
+#include <Wire.h> // display+bme280
 #include <Adafruit_Sensor.h>
-#include <Adafruit_BME280.h>
-#include <Servo.h>
-//#include "SSD1306.h"
-#include <neotimer.h>
+#include <Adafruit_BME280.h> //bme280
+#include <Servo.h> //servo
+
+#include <neotimer.h> //timer
 
 #define BME_SCK 13
 #define BME_MISO 12
@@ -54,15 +50,13 @@ static const unsigned char PROGMEM logo16_glcd_bmp[] =
 #error("Height incorrect, please fix Adafruit_SSD1306.h!");
 #endif
 
-const int interval = 4000; // time water in automode
+const char* ssid = "";
+const char* password =  "";
 
-const char* ssid = "test";
-const char* password =  "testtest123";
-
-const char* mqttServer = "m23.cloudmqtt.com";
-const int mqttPort = 16647;
-const char* mqttUser = "esp";
-const char* mqttPassword = "lionel123";
+const char* mqttServer = "";
+const int mqttPort = ;
+const char* mqttUser = "";
+const char* mqttPassword = "";
 
 //sensorvalues
 float temp;
@@ -73,79 +67,35 @@ int ldr;
 int mois;
 
 bool automode = 0; //manual
-bool waterplant = false;
-//Sensors Sensors;
+bool waterplant = false; // wordt de plant bijgevuld
+unsigned long startwater = 0; // start water geven
+const int waterinterval = 4000; // time water in automode
+unsigned long lastWatering; // laatste keer dat water gegeven
 
-WiFiClient espClient;
-PubSubClient client(espClient);
+unsigned long lastReset; // displayverandering
+
+WiFiClient espClient; // wifi
+PubSubClient client(espClient); // mqtt
 Servo myservo;
 
-Neotimer servotimer = Neotimer(4000);
-Neotimer updatetimer = Neotimer(5000);
-Neotimer wifitimer = Neotimer(500);
-Neotimer mqtttimer = Neotimer(2000);
-Neotimer displaytimer = Neotimer(100);
-Neotimer ldrtimer = Neotimer(100);
-Neotimer startuptimer = Neotimer(2000);
-Neotimer watertimer = Neotimer(4000);
+Neotimer updatetimer = Neotimer(60000); // wanneer updaten in automodus
+Neotimer ldrtimer = Neotimer(100); // op het juiste moment stroom naar select amuxboard
 
-Button flash = Button(D3, true, true, 25);
+Button flash = Button(D3, true, true, 25); //flashbutton
 
-int counter = 1;
-int lastReset;
-unsigned long lastWatering;
-
-/*class Display {
-  private:
-    Sensors sensors;
-  public:
-    void setup() {
-      display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize the I2C addr 0x3C (for the 128x64)
-      display.display();
-    }
-
-    void initiateWater() {
-      display.setTextSize(2);
-      display.setTextColor(WHITE);
-      display.setCursor(0,0);
-      display.println(F("Watering the plant"));
-    }
-    
-    void loop() {
-      display.setTextSize(1);
-      display.setTextColor(WHITE);
-      display.setCursor(0,0);
-      display.println(F(sensors.temperature() + " *C"));
-      display.setCursor(0, 5);
-      display.println(F(sensors.pressure() + " hPa"));
-      display.setCursor(0, 10);
-      display.println(F(sensors.humidity() + " %"));
-      display.display();
-    }
-
-};*/
-
-/*#define DEMO_DURATION 3000
-typedef void (*Demo)(void);
-
-int demoMode = 0;
-int counter = 1;
-*/
-// https://techtutorialsx.com/2017/04/09/esp8266-connecting-to-mqtt-broker/
-// gitkraken test
-
+//setupdelays
 unsigned long wifidelay = 0;
 unsigned long bmedelay = 0;
 unsigned long clientdelay = 0;
 unsigned long lastReconnectAttempt = 0;
 unsigned long setupdelay = 0;
 
-bool statuss;
+bool statuss; //bme
 
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(9600);
-  Wire.begin(D7, D6);
+  Wire.begin(D7, D6); // nodig voor display en bme
 
   statuss = bme.begin();
   bmedelay = millis();
@@ -157,9 +107,9 @@ void setup() {
     }
   }
   
-  pinMode(D2, OUTPUT);
-  pinMode(A0, INPUT);
-  pinMode(D0, OUTPUT);
+  pinMode(D2, OUTPUT); // select amuxboard
+  pinMode(A0, INPUT); // aout amuxboard
+  pinMode(D0, OUTPUT); // onboard led
   
   // oled display
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3D (for the 128x64)
@@ -223,30 +173,24 @@ void setup_wifi() {
   wifidelay = millis();
   if(millis() - wifidelay > 500){
       while (WiFi.status() != WL_CONNECTED) {
-      Serial.print(".");
+      Serial.print(F("."));
       setupdelay = millis();
-      //wifidelay = millis();
       }
     }
-      else  {
-      Serial.println("");
-      Serial.println("WiFi connected");
-      Serial.println("IP address: ");
-      Serial.println(WiFi.localIP());
-      //delay(500);     
-      }
+    
+    else  {
+    Serial.println(WiFi.localIP());    
+    }
   
 }
 
 boolean reconnection() {
     if (client.connect("ESP", mqttUser, mqttPassword, "esp/lastwill", 1, 1, "offline")) {
-      client.publish("esp/lastwill", "online");
-      Serial.println("connected");
-      client.subscribe("esp/servo");
-      client.subscribe("esp/mode");
-      //client.subscribe("esp/moisture");
-      client.subscribe("esp/values");
-      client.publish("esp/mode", "Manual");
+      client.publish("esp/lastwill", "online", true);
+      client.subscribe("esp/servo", 1);
+      client.subscribe("esp/mode", 1);
+      client.subscribe("esp/values", 1);
+      client.publish("esp/mode", "Manual", true);
     }
     return client.connected();
 }
@@ -258,44 +202,49 @@ void callback(char* topic, byte* payload, unsigned int length) {
   String top(topic);
   String message;
   
-  Serial.print("Message:");
+  Serial.print(F("Message:"));
   for (int i = 0; i < length; i++) {
     message += (char)payload[i];
     Serial.println((char)payload[i]);
   }
 
-  String servo = "esp/servo";
-  String autostring = "esp/mode";
-  String valuestring = "esp/values";
+  String servo = F("esp/servo");
+  String autostring = F("esp/mode");
+  String valuestring = F("esp/values");
 
+  // van manual naar auto
   if(top == autostring && message == "Auto"){
     automode = 1; // auto
     waterplant = 0;
-    //display.clearDisplay();
   }
-  
+
+  //van auto naar manual
   else if (top == autostring && message == "Manual"){
     automode = 0; // manual
     waterplant = 0;
-    //display.clearDisplay();
   }
-   
+
+  // manual modus, zet servo uit
   if(top == servo && message == "0" && automode == 0 ){
     waterplant = false;
     myservo.write(120);
     lastWatering = millis();
   }
 
+  // manual modus, zet servo aan
   else if(top == servo && message == "1" && automode == 0){
     myservo.write(0);
     waterplant = true;
+    startwater = millis();
   }
 
+  // manual modus, haal direct waarden op
   if (top == valuestring && message == "1" && automode == 0){
     printValues();
   }
 }
 
+// scherm 1 waarden
 void displayfirst(){
     display.setCursor(0,0);
     display.print("Temperature: " + String(temp) + " *C");
@@ -305,6 +254,7 @@ void displayfirst(){
     display.print("Altitude = " + String(alt) + " m");
 }
 
+// scherm 2 waarden
 void displaysecond(){
     display.setCursor(0,0);
     display.print("Humidity =  " + String(hum) + "%");
@@ -314,22 +264,13 @@ void displaysecond(){
     display.print("Soil Moisture: " + String(mois));
 }
 
-unsigned long last;
-
 void loop() {
-  /*if(!statuss){
-    bmedelay = millis();
-    if (millis()- bmedelay > 500){
-      statuss = bme.begin();
-    }
-  }*/
-  
-  if(!client.connected()){
+  if(!client.connected()){ // reconnect
     Serial.println("not connected");
     if(millis() - lastReconnectAttempt > 5000){
       lastReconnectAttempt = millis();
     
-      if(reconnection()){
+      if(reconnection()){ // methode die verbinding maakt met MQTT
         lastReconnectAttempt = 0;  
       }
     }
@@ -338,20 +279,22 @@ void loop() {
     client.loop();   
   }
 
-  showDisplay();
+  showDisplay(); // methode voor displayen
 
+  // flashbutton doe modus switcht
   flash.read();
   if(flash.wasPressed() && automode == 0){
     automode = 1;
-    client.publish("esp/mode", "Auto");
+    client.publish("esp/mode", "Auto", true);
   }
   
   else if(flash.wasPressed() && automode == 1){
     automode = 0;
-    client.publish("esp/mode", "Manual");
+    client.publish("esp/mode", "Manual", true);
   }
 
-  if(automode == 1) {   //auto
+  // juiste led bij juiste modus
+  if(automode == 1) {
     digitalWrite(D0, HIGH);
   }
 
@@ -362,53 +305,61 @@ void loop() {
   if(!waterplant){
     if(automode == 1) {   //auto
       if(updatetimer.repeat()){
-        printValues();
+        printValues(); // elke minuut update
       }
   
-      if(mois < 600){
+      if(mois < 500){ // lager dan threshold in automodus
         myservo.write(0);
         waterplant = true;
-        last = millis();
+        startwater = millis();
+        client.publish("esp/servo", "1", true);
       }    
     }
   }
-  
+
+  // OTA updates
   //ArduinoOTA.handle();
 
   if(waterplant){
       if(automode == 1){
-        if(millis() - last > interval){        
+        if(millis() - startwater > waterinterval){          // 4 seconde voorbij        
           myservo.write(120);
           lastWatering = millis();
           printValues();
           waterplant = false;
+          client.publish("esp/servo", "0", true);
         }
     }
   }
 }
 
 void printValues() {
-    temp = bme.readTemperature();
-    char buftemp[10];
+    //temperatuur meting + publish
+    temp = bme.readTemperature(); 
+    char buftemp[10]; //float naar *char
     dtostrf(temp, 6, 2, buftemp);
     client.publish("esp/temperature", buftemp);
     Serial.println(temp);
-    
+
+    //pressure meting + publish
     pres = bme.readPressure() / 100.0F;
     char bufpres[10];
     dtostrf(pres, 6, 2, bufpres);
     client.publish("esp/pressure", bufpres);
-    
+
+    //hoogte meting + publish
     alt = bme.readAltitude(SEALEVELPRESSURE_HPA);
     char bufalt[10];
     dtostrf(alt, 6, 2, bufalt);
     client.publish("esp/altitude", bufalt);
 
+    //humidity meting + publish
     hum = bme.readHumidity();
     char bufhum[10];
     dtostrf(hum, 6, 2, bufhum);
     client.publish("esp/humidity", bufhum);
 
+    //ldr meting + publish
     digitalWrite(D2, LOW);
     ldr = analogRead(A0);
     char ldrbuf [4];
@@ -416,19 +367,22 @@ void printValues() {
     client.publish("esp/ldr", ldrbuf);
     ldrtimer.start();
 
+    //opladen moisture
     while(ldrtimer.waiting()){
       digitalWrite(D2, HIGH);
     }
-    
+
+    //moisturemeting + publish
     if(ldrtimer.done()){
       mois = analogRead(A0);
       char buf [4];
       itoa(mois, buf, 10);
-      client.publish("esp/moisture", buf);
+      client.publish("esp/moisture", buf, true);
     }
 }
 
 void showDisplay(){
+  // wanneer servo aan is.
   if(waterplant){
       display.clearDisplay();
       display.setCursor(0,0);
@@ -436,19 +390,23 @@ void showDisplay(){
       display.display();
   }
 
+  //wanneer servo uit en verbinding met broker
   else if(!waterplant && client.connected()){
+    //scherm 1
     if (millis() - lastReset < 5000) {
       display.clearDisplay();
       displayfirst();
       display.display();
     }
-    
+
+    //scherm 2
     else if (millis() - lastReset > 5000 && millis() - lastReset < 10000) {
       display.clearDisplay();
       displaysecond();
       display.display();
     }
-    
+
+    // scherm 3: laatste keer water
     else if (millis() - lastReset > 10000 && millis() - lastReset < 15000) {
       display.clearDisplay();
       display.setCursor(0,0);
@@ -465,11 +423,11 @@ void showDisplay(){
     }
   }
 
+  //wanneer servo uit en geen verbinding
   else if(!waterplant && !client.connected()){
     display.clearDisplay();
     display.setCursor(0,0);
-    display.print("Trying to bitconnect!");
+    display.print(F("Trying to bitconnect!"));
     display.display();
   }
 }
-
